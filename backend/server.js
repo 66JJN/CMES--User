@@ -38,6 +38,159 @@ if (!fs.existsSync("uploads")) {
   fs.mkdirSync("uploads");
 }
 
+// Endpoint สำหรับส่ง OTP
+app.post("/api/send-otp", async (req, res) => {
+  const { phone } = req.body;
+
+  if (!phone) {
+    return res.status(400).json({ success: false, message: "กรุณาระบุหมายเลขโทรศัพท์" });
+  }
+
+  if (!/^\d{10}$/.test(phone)) {
+    return res.status(400).json({ success: false, message: "หมายเลขโทรศัพท์ไม่ถูกต้อง" });
+  }
+
+  var config = {
+    method: 'post',
+    url: 'https://portal-otp.smsmkt.com/api/otp-send',
+    headers: {
+      "Content-Type": "application/json",
+      "api_key": "2607fce6276d1f68e8d543e953d76bc4",
+      "secret_key": "5yX5m9LcHVNks99i",
+    },
+    data: JSON.stringify({
+      "project_key": "69a425bf4f",
+      "phone": phone,
+    })
+  };
+
+  try {
+    const response = await axios(config);
+    console.log(JSON.stringify(response.data));
+
+    if (response.data.code === "000") {
+      res.json({
+        success: true,
+        message: "OTP ส่งสำเร็จ",
+        token: response.data.result.token,
+      });
+    } else {
+      res.status(400).json({
+        success: false,
+        message: response.data.detail,
+      });
+    }
+  } catch (error) {
+    console.error("Error sending OTP:", error.message || error);
+    res.status(500).json({ success: false, message: "ไม่สามารถส่ง OTP ได้" });
+  }
+});
+
+// ตรวจสอบ OTP
+app.post("/api/verify-otp", async (req, res) => {
+  const { otp, token, phone, birthday } = req.body;
+
+  if (!otp || !token) {
+    return res.status(400).json({ success: false, message: "กรุณาระบุ OTP และ token" });
+  }
+
+  const verifyData = {
+    otp_code: otp,
+    token: token,
+    ref_code: "",
+  };
+
+  const config = {
+    method: "post",
+    url: "https://portal-otp.smsmkt.com/api/otp-validate",
+    headers: {
+      "Content-Type": "application/json",
+      api_key: "2607fce6276d1f68e8d543e953d76bc4",
+      secret_key: "5yX5m9LcHVNks99i",
+    },
+    data: JSON.stringify(verifyData),
+  };
+
+  try {
+    const response = await axios(config);
+
+    if (response.data.code === "000") {
+      // สร้างข้อมูลผู้ใช้ใหม่
+      const userData = {
+        phone,
+        birthday,
+        lastBirthdayUpdate: new Date().toISOString(),
+      };
+
+      // ส่งข้อมูลไปยัง admin backend เพื่อบันทึก
+      const adminResponse = await fetch("http://localhost:5001/api/users", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(userData),
+      });
+
+      if (adminResponse.ok) {
+        const { token } = await adminResponse.json();
+        res.json({ 
+          success: true, 
+          message: "OTP verified successfully",
+          token,
+          user: userData
+        });
+      } else {
+        throw new Error("Failed to create user");
+      }
+    } else {
+      console.error("SMSMKT Error:", response.data.detail);
+      res.status(400).json({ success: false, message: response.data.detail });
+    }
+  } catch (error) {
+    console.error("Error verifying OTP:", error.message || error);
+    res.status(500).json({ success: false, message: "ไม่สามารถตรวจสอบ OTP ได้" });
+  }
+});
+
+// อัพเดตวันเกิด
+app.post("/api/update-birthday", async (req, res) => {
+  const { birthday } = req.body;
+  const token = req.headers.authorization?.split(" ")[1];
+
+  if (!token) {
+    return res.status(401).json({ success: false, message: "ไม่พบ token" });
+  }
+
+  if (!birthday) {
+    return res.status(400).json({ success: false, message: "กรุณาระบุวันเกิด" });
+  }
+
+  try {
+    // ส่งคำขออัพเดตวันเกิดไปยัง admin backend
+    const response = await fetch("http://localhost:5001/api/users/update-birthday", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`
+      },
+      body: JSON.stringify({ 
+        birthday,
+        lastBirthdayUpdate: new Date().toISOString()
+      })
+    });
+
+    if (response.ok) {
+      const data = await response.json();
+      res.json({ success: true, message: "อัพเดตวันเกิดสำเร็จ", user: data });
+    } else {
+      throw new Error("Failed to update birthday");
+    }
+  } catch (error) {
+    console.error("Error updating birthday:", error);
+    res.status(500).json({ success: false, message: "ไม่สามารถอัพเดตวันเกิดได้" });
+  }
+});
+
 // ตั้งค่าการเก็บไฟล์
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
@@ -50,6 +203,54 @@ const storage = multer.diskStorage({
 const upload = multer({ storage });
 
 app.use(express.json());
+
+// เพิ่ม endpoint สำหรับตรวจสอบวันเกิด
+app.get("/api/check-birthday", async (req, res) => {
+  const token = req.headers.authorization?.split(" ")[1];
+  if (!token) {
+    return res.status(401).json({ status: "error", message: "ไม่พบ token" });
+  }
+
+  try {
+    const response = await fetch("http://localhost:5001/api/user/profile", {
+      headers: {
+        Authorization: `Bearer ${token}`
+      }
+    });
+    
+    if (!response.ok) {
+      throw new Error("ไม่สามารถดึงข้อมูลผู้ใช้ได้");
+    }
+
+    const userData = await response.json();
+    if (!userData.birthday) {
+      return res.json({ isBirthday: false });
+    }
+
+    // ตรวจสอบว่าเป็นวันเกิดหรือไม่
+    const birthday = new Date(userData.birthday);
+    const today = new Date();
+    const isBirthday = birthday.getDate() === today.getDate() && 
+                      birthday.getMonth() === today.getMonth();
+
+    // ตรวจสอบว่าสามารถแก้ไขวันเกิดได้หรือไม่ (ทุก 3 เดือน)
+    const lastBirthdayUpdate = new Date(userData.lastBirthdayUpdate || userData.birthday);
+    const monthsDiff = (today.getFullYear() - lastBirthdayUpdate.getFullYear()) * 12 + 
+                      today.getMonth() - lastBirthdayUpdate.getMonth();
+    const canUpdateBirthday = monthsDiff >= 3;
+
+    res.json({ 
+      isBirthday,
+      canUpdateBirthday,
+      birthday: userData.birthday,
+      lastBirthdayUpdate: userData.lastBirthdayUpdate
+    });
+
+  } catch (err) {
+    console.error("Error checking birthday:", err);
+    res.status(500).json({ status: "error", message: "ไม่สามารถตรวจสอบวันเกิดได้" });
+  }
+});
 
 app.post("/api/report", async (req, res) => {
   const { category, detail } = req.body;

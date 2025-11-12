@@ -10,10 +10,12 @@ function Home() {
   const [startTime, setStartTime] = useState("");
   const [endTime, setEndTime] = useState("");
   const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [alertMessage, setAlertMessage] = useState("");
   const [status, setStatus] = useState({
     systemOn: true,
     imageOn: true,
     textOn: true,
+    birthdayOn: true,
   });
 
   useEffect(() => {
@@ -65,6 +67,7 @@ function Home() {
         systemOn: newConfig.systemOn,
         imageOn: newConfig.enableImage,
         textOn: newConfig.enableText,
+        birthdayOn: newConfig.enableBirthday,
       });
     });
     return () => socket.off("configUpdate");
@@ -242,8 +245,87 @@ function Home() {
                     </div>
                   </div>
                 )}
+                {status.birthdayOn && (
+                  <div
+                    className="service-card birthday-service"
+                    onClick={async () => {
+                      if (!isLoggedIn) {
+                        navigate('/select');
+                        return;
+                      }
+                      try {
+                        const token = localStorage.getItem('token');
+                        const response = await fetch("http://localhost:4000/api/check-birthday", {
+                          headers: {
+                            Authorization: `Bearer ${token}`
+                          }
+                        });
+                        
+                        if (!response.ok) {
+                          throw new Error("ไม่สามารถตรวจสอบวันเกิดได้");
+                        }
+                        
+                        const data = await response.json();
+                        if (data.isBirthday) {
+                          navigate("/upload?type=birthday&free=true");
+                        } else {
+                          navigate("/select?type=birthday");
+                        }
+                      } catch (error) {
+                        console.error("Error checking birthday:", error);
+                        setAlertMessage("ไม่สามารถตรวจสอบวันเกิดได้ กรุณาลองใหม่อีกครั้ง");
+                      }
+                    }}
+                    style={{
+                      cursor: "pointer",
+                      background: "linear-gradient(90deg, #fbbf24 0%, #f472b6 100%)",
+                      color: "#fff",
+                      boxShadow: "0 2px 12px rgba(30,41,59,0.08)",
+                    }}
+                  >
+                    <div className="card-header">
+                      <div className="service-icon">
+                        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                          <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+                          <circle cx="8.5" cy="8.5" r="1.5"/>
+                          <path d="M21 15l-5-5L5 21"/>
+                        </svg>
+                      </div>
+                      <div className="service-badge">ภาพ + ข้อความ</div>
+                    </div>
+                    <div className="card-content">
+                      <h3>อวยพรวันเกิด</h3>
+                      <p>อัปโหลดรูปภาพพร้อมข้อความแสดงบนหน้าจอดิจิทัล{isLoggedIn && " (ฟรีในวันเกิดของคุณ!)"}</p>
+                      <div className="card-features">
+                        <span className="feature">📸 รองรับ JPG, PNG, GIF</span>
+                        <span className="feature">💬 เพิ่มข้อความได้</span>
+                        <span className="feature">🎨 เลือกสีข้อความ</span>
+                      </div>
+                    </div>
+                    <div className="card-footer">
+                      <span className="price-from">{isLoggedIn ? "ฟรีในวันเกิดของคุณ!" : "ฟรีสำหรับคนเกิดวันนี้"}</span>
+                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <path d="M5 12h14M12 5l7 7-7 7"/>
+                      </svg>
+                    </div>
+                  </div>
+                )}
+                {alertMessage && (
+                  <div className="alert-message" style={{
+                    position: "fixed",
+                    top: "20px",
+                    right: "20px",
+                    background: "#f44336",
+                    color: "white",
+                    padding: "10px 20px",
+                    borderRadius: "4px",
+                    zIndex: 1000
+                  }}>
+                    {alertMessage}
+                  </div>
+                )}
                 {/* ถ้าไม่มีฟังก์ชันเปิดเลย ให้แสดงข้อความแจ้งเตือน */}
-                {!status.imageOn && !status.textOn && (
+                {!status.imageOn && !status.textOn && !status.birthdayOn && (
                   <div
                     style={{
                       width: "100%",

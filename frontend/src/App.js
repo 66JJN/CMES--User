@@ -1,5 +1,6 @@
 import React from "react";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
+import Register from "./Register";  
 import Home from "./Home";
 import Select from "./Select";
 import Upload from "./Upload";
@@ -12,7 +13,8 @@ function App() {
   return (
     <BrowserRouter>
       <Routes>
-        <Route path="/" element={<Home />} />
+        <Route path="/" element={<Register />} />
+        <Route path="/home" element={<Home />} />
         <Route path="/select" element={<Select />} />
         <Route path="/upload" element={<Upload />} />
         <Route path="/status" element={<Status />} />
