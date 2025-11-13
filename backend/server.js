@@ -206,49 +206,43 @@ app.use(express.json());
 
 // เพิ่ม endpoint สำหรับตรวจสอบวันเกิด
 app.get("/api/check-birthday", async (req, res) => {
-  const token = req.headers.authorization?.split(" ")[1];
-  if (!token) {
-    return res.status(401).json({ status: "error", message: "ไม่พบ token" });
-  }
-
   try {
-    const response = await fetch("http://localhost:5001/api/user/profile", {
-      headers: {
-        Authorization: `Bearer ${token}`
-      }
-    });
+    // Get birthday from request body or token data
+    // Note: Birthday is stored in user's localStorage on client side
+    // So we get it from query param as fallback
+    const birthdayStr = req.query.birthday;
     
-    if (!response.ok) {
-      throw new Error("ไม่สามารถดึงข้อมูลผู้ใช้ได้");
-    }
-
-    const userData = await response.json();
-    if (!userData.birthday) {
+    if (!birthdayStr) {
       return res.json({ isBirthday: false });
     }
 
-    // ตรวจสอบว่าเป็นวันเกิดหรือไม่
-    const birthday = new Date(userData.birthday);
-    const today = new Date();
-    const isBirthday = birthday.getDate() === today.getDate() && 
-                      birthday.getMonth() === today.getMonth();
+    // Parse birthday string - expect format: "DD/MM/YYYY"
+    const parts = birthdayStr.split('/');
+    if (parts.length !== 3) {
+      return res.json({ isBirthday: false });
+    }
 
-    // ตรวจสอบว่าสามารถแก้ไขวันเกิดได้หรือไม่ (ทุก 3 เดือน)
-    const lastBirthdayUpdate = new Date(userData.lastBirthdayUpdate || userData.birthday);
-    const monthsDiff = (today.getFullYear() - lastBirthdayUpdate.getFullYear()) * 12 + 
-                      today.getMonth() - lastBirthdayUpdate.getMonth();
-    const canUpdateBirthday = monthsDiff >= 3;
+    const day = parseInt(parts[0], 10);
+    const month = parseInt(parts[1], 10);
+
+    // Get today's date
+    const today = new Date();
+    const todayDay = today.getDate();
+    const todayMonth = today.getMonth() + 1; // getMonth() returns 0-11
+
+    // Check if today is birthday (match day and month only)
+    const isBirthday = day === todayDay && month === todayMonth;
 
     res.json({ 
       isBirthday,
-      canUpdateBirthday,
-      birthday: userData.birthday,
-      lastBirthdayUpdate: userData.lastBirthdayUpdate
+      birthday: birthdayStr,
+      todayDay,
+      todayMonth
     });
 
   } catch (err) {
     console.error("Error checking birthday:", err);
-    res.status(500).json({ status: "error", message: "ไม่สามารถตรวจสอบวันเกิดได้" });
+    res.status(500).json({ isBirthday: false, error: err.message });
   }
 });
 

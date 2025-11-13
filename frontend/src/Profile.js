@@ -64,19 +64,23 @@ function Profile() {
 
   // compute nextEditFromLast and canEditBirthday whenever user.lastBirthdayEdit changes
   useEffect(() => {
-    // guard: if lastBirthdayEdit equals stored birthday string (mistaken), treat as empty
+    // ❌ ปลดล็อกการแก้ไขวันเกิดในระหว่างทดสอบ ✅ อนุญาตให้แก้ไขได้ทุกครั้ง
+    setNextEditFromLast(null);
+    setCanEditBirthday(true);
+    
+    // TODO: เปิดใช้งาน 3-month restriction หลังจาก 13 กุมภาพันธ์ 2569
+    /*
     const raw = user.lastBirthdayEdit || "";
     const possiblyMistaken = raw && user.birthday && raw.trim() === user.birthday.trim();
 
     if (!raw || possiblyMistaken) {
       setNextEditFromLast(null);
-      setCanEditBirthday(true); // never edited before -> can edit now
+      setCanEditBirthday(true);
       return;
     }
 
     const parsed = parsePossibleDate(raw);
     if (!parsed) {
-      // can't parse -> mark as unknown and allow edit (or you can choose to disallow)
       setNextEditFromLast(null);
       setCanEditBirthday(true);
       return;
@@ -86,21 +90,21 @@ function Profile() {
     nxt.setMonth(nxt.getMonth() + 3);
     setNextEditFromLast(nxt);
 
-    // can edit only if now >= nxt
     const now = new Date();
     setCanEditBirthday(now >= nxt);
+    */
   }, [user.lastBirthdayEdit, user.birthday]);
 
   // hasChanges
   const hasChanges = useMemo(() => {
-    const avatarA = user.avatar || null;
-    const avatarB = tempUser.avatar || previewUrl || null;
-    return (
-      (user.username || "") !== (tempUser.username || "") ||
-      (user.email || "") !== (tempUser.email || "") ||
-      (avatarA || "") !== (avatarB || "") ||
-      (user.birthday || "") !== (tempUser.birthday || "")
-    );
+    const usernameChanged = (user.username || "") !== (tempUser.username || "");
+    const emailChanged = (user.email || "") !== (tempUser.email || "");
+    const birthdayChanged = (user.birthday || "") !== (tempUser.birthday || "");
+    
+    // For avatar, check if tempUser.avatar or previewUrl is different from user.avatar
+    const avatarChanged = (tempUser.avatar !== user.avatar) || (previewUrl && previewUrl !== user.avatar);
+    
+    return usernameChanged || emailChanged || birthdayChanged || avatarChanged;
   }, [user, tempUser, previewUrl]);
 
   // birthday validation
@@ -147,6 +151,19 @@ function Profile() {
   const handleFileSelect = (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    
+    // Validate file type
+    if (!file.type.startsWith('image/')) {
+      alert("โปรดเลือกไฟล์รูปภาพเท่านั้น");
+      return;
+    }
+    
+    // Validate file size (max 5MB)
+    if (file.size > 5 * 1024 * 1024) {
+      alert("ขนาดไฟล์ต้องไม่เกิน 5 MB");
+      return;
+    }
+    
     const url = URL.createObjectURL(file);
     setPreviewUrl(url);
     setTempUser(prev => ({ ...prev, avatar: url }));
@@ -184,26 +201,7 @@ function Profile() {
       lastBirthdayEdit: isBirthdayChanged ? new Date().toISOString() : user.lastBirthdayEdit
     };
 
-    // optionally call backend if birthday changed (keeps as-is)
-    if (isBirthdayChanged && tempUser.birthday) {
-      try {
-        const res = await fetch("http://localhost:5000/update-birthday", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            phone: localStorage.getItem("userPhone"),
-            birthday: tempUser.birthday
-          })
-        });
-        if (!res.ok) throw new Error("Failed to update birthday");
-      } catch (err) {
-        console.error(err);
-        alert("ไม่สามารถบันทึกวันเกิดได้ กรุณาลองใหม่อีกครั้ง");
-        return;
-      }
-    }
-
-    // persist locally and update state
+    // persist locally and update state (ไม่ต้องเรียก backend เพราะใช้ localStorage)
     setUser(newUser);
     setTempUser(newUser);
     localStorage.setItem("username", newUser.username);
@@ -233,7 +231,7 @@ function Profile() {
     navigate("/home");
   };
 
-  const handleGoBack = () => navigate("/");
+  const handleGoBack = () => navigate("/home");
 
   return (
     <div className="profile-container">
@@ -252,13 +250,31 @@ function Profile() {
                 {(previewUrl || tempUser.avatar || user.avatar) ? (
                   <img src={previewUrl || tempUser.avatar || user.avatar} alt="Avatar" className="avatar-image" />
                 ) : (
-                  <div className="avatar-placeholder">{/* svg */}</div>
+                  <div className="avatar-placeholder">
+                    <svg width="70" height="70" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                      <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
+                      <circle cx="12" cy="7" r="4"/>
+                    </svg>
+                  </div>
                 )}
-                <div className="avatar-actions">
-                  <label className="upload-btn" htmlFor="avatar-upload">↑</label>
-                  <input id="avatar-upload" type="file" accept="image/*" onChange={handleFileSelect} style={{ display: 'none' }} />
-                  {(tempUser.avatar || previewUrl) && <button className="remove-btn" onClick={handleRemoveAvatar} type="button">x</button>}
-                </div>
+              </div>
+              {/* Avatar Action Buttons - Moved outside avatar */}
+              <div className="avatar-actions">
+                <label className="upload-btn" htmlFor="avatar-upload">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M12 5v14M5 12h14"/>
+                  </svg>
+                  <span>อัปโหลด</span>
+                </label>
+                <input id="avatar-upload" type="file" accept="image/*" onChange={handleFileSelect} style={{ display: 'none' }} />
+                {(tempUser.avatar || previewUrl) && (
+                  <button className="remove-btn" onClick={handleRemoveAvatar} type="button">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <path d="M18 6L6 18M6 6l12 12"/>
+                    </svg>
+                    <span>ลบ</span>
+                  </button>
+                )}
               </div>
             </div>
 
@@ -309,9 +325,9 @@ function Profile() {
 
             <div className="profile-actions">
               <button
-                className={`save-btn ${hasChanges && !birthdayError ? "active" : "disabled"}`}
+                className={`save-btn ${!birthdayError ? "active" : "disabled"}`}
                 onClick={handleSave}
-                disabled={!hasChanges || !!birthdayError}
+                disabled={!!birthdayError}
               >
                 บันทึก
               </button>

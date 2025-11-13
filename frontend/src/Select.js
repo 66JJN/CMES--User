@@ -19,15 +19,21 @@ function Select() {
 
   useEffect(() => {
     const socket = io("http://localhost:4005");
+    
+    // ตั้ง listener ก่อน
     socket.on("status", (data) => {
+      console.log("Received status event:", data); // debug
       // filter เฉพาะแพ็คเกจที่ตรงกับ type ที่เลือก
       if (data.settings) {
         const filtered = data.settings.filter(pkg => pkg.mode === type);
+        console.log("Filtered packages for", type, ":", filtered); // debug
         setPackages(filtered);
       }
     });
+
     // ขอข้อมูลล่าสุด
     socket.emit("getConfig");
+    
     return () => socket.disconnect();
   }, [type]);
 
@@ -39,33 +45,45 @@ function Select() {
   };
 
   const handleNext = () => {
-    if (isProcessing) return;
-    setIsProcessing(true);
+  if (isProcessing) return;
+  setIsProcessing(true);
 
-    if (selectedOption === null) {
-      setAlertMessage("โปรดเลือกแพ็กเกจที่ต้องการ");
-      setIsProcessing(false);
-    } else {
-      const currentTime = new Date();
-      
-      // สำหรับ birthday จะข้ามการจ่ายเงินไปยัง upload โดยตั้ง price = 0
-      if (type === "birthday") {
-        const endTime = new Date(currentTime.getTime() + parseInt(time) * 60000);
-        localStorage.setItem("endTime", endTime.toISOString());
-        const newOrderValue = JSON.stringify({ type, time, price: 0 });
-        localStorage.setItem("order", newOrderValue);
-        navigate(`/upload?type=${type}&time=${time}&price=0&free=true`);
-      } else {
-        const endTime = new Date(currentTime.getTime() + parseInt(time) * 60000);
-        localStorage.setItem("endTime", endTime.toISOString());
-        const newOrderValue = JSON.stringify({ type, time, price });
-        localStorage.setItem("order", newOrderValue);
-        navigate(`/upload?type=${type}&time=${time}&price=${price}`);
-      }
-      
-      setIsProcessing(false);
-    }
-  };
+  if (selectedOption === null) {
+    setAlertMessage("โปรดเลือกแพ็กเกจที่ต้องการ");
+    setIsProcessing(false);
+    return;
+  }
+
+  // pkg.time เป็นวินาที -> แปลงเป็นนาที (อย่างน้อย 1)
+  const timeSeconds = parseInt(time, 10) || 0;
+  const timeInMinutes = Math.max(1, Math.ceil(timeSeconds / 60));
+
+  // price อาจเป็น string -> แปลงเป็นตัวเลข
+  const priceNum = Number(price) || 0;
+
+  // ถ้าประเภทเป็น birthday ให้ไปหน้า upload แบบ image (รูป + ข้อความ)
+  if (type === "birthday") {
+    const endTime = new Date(Date.now() + timeSeconds * 1000);
+    localStorage.setItem("endTime", endTime.toISOString());
+    const newOrderValue = JSON.stringify({ type: "image", time: timeInMinutes, price: 0 });
+    localStorage.setItem("order", newOrderValue);
+
+    // navigate ไปแบบ image แต่ยังบอกว่าเป็นฟรี
+    navigate(`/upload?type=image&time=${timeInMinutes}&price=0&free=true`);
+  } else {
+    // ปกติ (text / image)
+    const endTime = new Date(Date.now() + timeSeconds * 1000);
+    localStorage.setItem("endTime", endTime.toISOString());
+    const newOrderValue = JSON.stringify({ type, time: timeInMinutes, price: priceNum });
+    localStorage.setItem("order", newOrderValue);
+
+    const freeParam = priceNum === 0 ? "&free=true" : "";
+    navigate(`/upload?type=${encodeURIComponent(type)}&time=${timeInMinutes}&price=${priceNum}${freeParam}`);
+  }
+
+  setIsProcessing(false);
+};
+
 
   const handleGoBack = () => {
     navigate(-1);
@@ -131,7 +149,7 @@ function Select() {
                     : type === "text"
                     ? "ส่งข้อความไปแสดงบนจอ"
                     : type === "birthday"
-                    ? "ส่งข้อความอวยพรวันเกิดแบบฟรี!"
+                    ? "อัปโหลดรูปภาพพร้อมข้อความ"
                     : "อัปโหลดรูปภาพพร้อมข้อความ"
                   }
                 </p>
@@ -151,7 +169,7 @@ function Select() {
                   <div
                     key={pkg.id}
                     className={`package-card ${selectedOption === index ? "selected" : ""}`}
-                    onClick={() => handleSelect(pkg.duration, pkg.price, index)}
+                    onClick={() => handleSelect(pkg.time, pkg.price, index)}
                   >
                     <div className="package-header">
                       <div className="package-icon">

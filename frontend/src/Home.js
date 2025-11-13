@@ -1,16 +1,20 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { io } from "socket.io-client";
 import "./Home.css";
 
 function Home() {
   const navigate = useNavigate();
+  const profileMenuRef = useRef(null);
   const [showModal, setShowModal] = useState(false);
+  const [showProfileMenu, setShowProfileMenu] = useState(false);
   const [order, setOrder] = useState(null);
   const [startTime, setStartTime] = useState("");
   const [endTime, setEndTime] = useState("");
   const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [profileImage, setProfileImage] = useState(null);
   const [alertMessage, setAlertMessage] = useState("");
+  const [isBirthday, setIsBirthday] = useState(null); // null = loading, true/false = checked
   const [status, setStatus] = useState({
     systemOn: true,
     imageOn: true,
@@ -20,6 +24,7 @@ function Home() {
 
   useEffect(() => {
     setIsLoggedIn(!!localStorage.getItem("token"));
+    setProfileImage(localStorage.getItem("avatar"));
 
     const storedOrder = localStorage.getItem("order");
     try {
@@ -57,6 +62,40 @@ function Home() {
     }
   }, [order]);
 
+  // Check birthday status when logged in
+  useEffect(() => {
+    if (!isLoggedIn) {
+      setIsBirthday(null);
+      return;
+    }
+
+    const checkBirthdayStatus = async () => {
+      try {
+        const birthday = localStorage.getItem('birthday');
+        if (!birthday) {
+          setIsBirthday(false);
+          return;
+        }
+
+        // Send birthday as query param to backend
+        const response = await fetch(`http://localhost:4000/api/check-birthday?birthday=${encodeURIComponent(birthday)}`);
+        
+        if (response.ok) {
+          const data = await response.json();
+          console.log("Birthday check result:", data);
+          setIsBirthday(data.isBirthday);
+        } else {
+          setIsBirthday(false);
+        }
+      } catch (error) {
+        console.error("Error checking birthday:", error);
+        setIsBirthday(false);
+      }
+    };
+
+    checkBirthdayStatus();
+  }, [isLoggedIn]);
+
   // สร้าง socket connection
   const socket = io("http://localhost:4005");
 
@@ -90,6 +129,20 @@ function Home() {
       .catch(() => {});
   }, []);
 
+  // ปิดเมนูเมื่อคลิกนอกเมนู
+  useEffect(() => {
+    function handleClickOutside(event) {
+      if (profileMenuRef.current && !profileMenuRef.current.contains(event.target)) {
+        setShowProfileMenu(false);
+      }
+    }
+
+    if (showProfileMenu) {
+      document.addEventListener("mousedown", handleClickOutside);
+      return () => document.removeEventListener("mousedown", handleClickOutside);
+    }
+  }, [showProfileMenu]);
+
   const handleSelect = (type) => {
     navigate(`/select?type=${type}`);
   };
@@ -100,6 +153,13 @@ function Home() {
 
   const handleCloseModal = () => {
     setShowModal(false);
+  };
+
+  const handleLogout = () => {
+    localStorage.clear();
+    setShowProfileMenu(false);
+    navigate("/");
+    window.location.reload();
   };
 
   return (
@@ -128,45 +188,179 @@ function Home() {
           </div>
           
           <nav className="header-nav">
-            {isLoggedIn ? (
-              <Link to="/Profile" className="nav-btn profile-btn">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
-                  <circle cx="12" cy="7" r="4"/>
-                </svg>
-                Profile
-              </Link>
-            ) : (
-              <div className="auth-buttons">
-                <Link to="/signin" className="nav-btn signin-btn">
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/>
-                    <polyline points="10,17 15,12 10,7"/>
-                    <line x1="15" y1="12" x2="3" y2="12"/>
+            <div style={{ position: "relative" }}>
+              <button 
+                className="profile-avatar-btn"
+                onClick={() => setShowProfileMenu(!showProfileMenu)}
+                title="ไปยังหน้าโปรไฟล์"
+                style={{
+                  width: "48px",
+                  height: "48px",
+                  borderRadius: "50%",
+                  border: "2px solid #667eea",
+                  background: profileImage ? undefined : "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
+                  backgroundImage: profileImage ? `url(${profileImage})` : undefined,
+                  backgroundSize: "cover",
+                  backgroundPosition: "center",
+                  cursor: "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  color: "white",
+                  fontSize: "24px",
+                  transition: "all 0.3s ease",
+                  padding: 0,
+                  fontWeight: "500",
+                  overflow: "hidden",
+                }}
+                onMouseEnter={(e) => {
+                  e.target.style.transform = "scale(1.1)";
+                  e.target.style.boxShadow = "0 4px 12px rgba(102, 126, 234, 0.4)";
+                }}
+                onMouseLeave={(e) => {
+                  if (!showProfileMenu) {
+                    e.target.style.transform = "scale(1)";
+                    e.target.style.boxShadow = "none";
+                  }
+                }}
+              >
+                {!profileImage && (
+                  <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                    <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
+                    <circle cx="12" cy="7" r="4"/>
                   </svg>
-                  Sign In
-                </Link>
-                <Link to="/signup" className="nav-btn signup-btn">
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
-                    <circle cx="8.5" cy="7" r="4"/>
-                    <line x1="20" y1="8" x2="20" y2="14"/>
-                    <line x1="23" y1="11" x2="17" y2="11"/>
-                  </svg>
-                  Sign Up
-                </Link>
-              </div>
-            )}
-            <Link to="/report" className="nav-btn report-btn">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-                <polyline points="14,2 14,8 20,8"/>
-                <line x1="16" y1="13" x2="8" y2="13"/>
-                <line x1="16" y1="17" x2="8" y2="17"/>
-                <polyline points="10,9 9,9 8,9"/>
-              </svg>
-              Report
-            </Link>
+                )}
+              </button>
+
+              {/* Profile Menu Dropdown */}
+              {showProfileMenu && (
+                <div
+                  ref={profileMenuRef}
+                  style={{
+                    position: "absolute",
+                    top: "50px",
+                    right: 0,
+                    background: "white",
+                    borderRadius: "12px",
+                    boxShadow: "0 8px 24px rgba(0, 0, 0, 0.12)",
+                    minWidth: "220px",
+                    zIndex: 1000,
+                    overflow: "hidden",
+                  }}
+                >
+                  {/* Menu Header */}
+                  <div
+                    style={{
+                      padding: "16px",
+                      background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
+                      color: "white",
+                      borderBottom: "1px solid rgba(255,255,255,0.1)",
+                    }}
+                  >
+                    <div style={{ fontSize: "14px", fontWeight: "600" }}>
+                      {localStorage.getItem("username") || "ผู้ใช้"}
+                    </div>
+                    <div style={{ fontSize: "12px", opacity: 0.9 }}>
+                      {localStorage.getItem("email") || "user@example.com"}
+                    </div>
+                  </div>
+
+                  {/* Menu Items */}
+                  <div>
+                    {/* Edit Profile */}
+                    <button
+                      onClick={() => {
+                        setShowProfileMenu(false);
+                        navigate("/profile");
+                      }}
+                      style={{
+                        width: "100%",
+                        padding: "12px 16px",
+                        border: "none",
+                        background: "transparent",
+                        cursor: "pointer",
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "12px",
+                        color: "#333",
+                        fontSize: "14px",
+                        transition: "background 0.2s",
+                        borderBottom: "1px solid #f0f0f0",
+                      }}
+                      onMouseEnter={(e) => (e.target.style.background = "#f5f5f5")}
+                      onMouseLeave={(e) => (e.target.style.background = "transparent")}
+                    >
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+                        <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+                      </svg>
+                      แก้ไขโปรไฟล์
+                    </button>
+
+                    {/* Report Problem */}
+                    <button
+                      onClick={() => {
+                        setShowProfileMenu(false);
+                        navigate("/report");
+                      }}
+                      style={{
+                        width: "100%",
+                        padding: "12px 16px",
+                        border: "none",
+                        background: "transparent",
+                        cursor: "pointer",
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "12px",
+                        color: "#333",
+                        fontSize: "14px",
+                        transition: "background 0.2s",
+                        borderBottom: "1px solid #f0f0f0",
+                      }}
+                      onMouseEnter={(e) => (e.target.style.background = "#f5f5f5")}
+                      onMouseLeave={(e) => (e.target.style.background = "transparent")}
+                    >
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <circle cx="12" cy="12" r="10"/>
+                        <line x1="12" y1="8" x2="12" y2="12"/>
+                        <line x1="12" y1="16" x2="12.01" y2="16"/>
+                      </svg>
+                      รายงานปัญหา
+                    </button>
+
+                    {/* Logout */}
+                    <button
+                      onClick={() => {
+                        setShowProfileMenu(false);
+                        handleLogout();
+                      }}
+                      style={{
+                        width: "100%",
+                        padding: "12px 16px",
+                        border: "none",
+                        background: "transparent",
+                        cursor: "pointer",
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "12px",
+                        color: "#ef4444",
+                        fontSize: "14px",
+                        transition: "background 0.2s",
+                      }}
+                      onMouseEnter={(e) => (e.target.style.background = "#fee2e2")}
+                      onMouseLeave={(e) => (e.target.style.background = "transparent")}
+                    >
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
+                        <polyline points="16 17 21 12 16 7"/>
+                        <line x1="21" y1="12" x2="9" y2="12"/>
+                      </svg>
+                      ออกจากระบบ
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
           </nav>
         </header>
 
@@ -249,38 +443,24 @@ function Home() {
                   <div
                     className="service-card birthday-service"
                     onClick={async () => {
-                      if (!isLoggedIn) {
-                        navigate('/select');
+                      // ปิด click เลยถ้าไม่ใช่วันเกิด หรือไม่ logged in
+                      if (!isLoggedIn || isBirthday === false) {
                         return;
                       }
-                      try {
-                        const token = localStorage.getItem('token');
-                        const response = await fetch("http://localhost:4000/api/check-birthday", {
-                          headers: {
-                            Authorization: `Bearer ${token}`
-                          }
-                        });
-                        
-                        if (!response.ok) {
-                          throw new Error("ไม่สามารถตรวจสอบวันเกิดได้");
-                        }
-                        
-                        const data = await response.json();
-                        if (data.isBirthday) {
-                          navigate("/upload?type=birthday&free=true");
-                        } else {
-                          navigate("/select?type=birthday");
-                        }
-                      } catch (error) {
-                        console.error("Error checking birthday:", error);
-                        setAlertMessage("ไม่สามารถตรวจสอบวันเกิดได้ กรุณาลองใหม่อีกครั้ง");
+                      
+                      // ถ้าเป็นวันเกิด - ไปหน้า upload ฟรี
+                      if (isBirthday === true) {
+                        navigate("/upload?type=birthday&free=true");
+                        return;
                       }
                     }}
                     style={{
-                      cursor: "pointer",
-                      background: "linear-gradient(90deg, #fbbf24 0%, #f472b6 100%)",
+                      cursor: isBirthday === false || !isLoggedIn ? "not-allowed" : "pointer",
+                      pointerEvents: isBirthday === false || !isLoggedIn ? "none" : "auto",
+                      background: isBirthday === false || !isLoggedIn ? "linear-gradient(90deg, #cbd5e0 0%, #a0aec0 100%)" : "linear-gradient(90deg, #fbbf24 0%, #f472b6 100%)",
                       color: "#fff",
-                      boxShadow: "0 2px 12px rgba(30,41,59,0.08)",
+                      boxShadow: isBirthday === false || !isLoggedIn ? "none" : "0 2px 12px rgba(30,41,59,0.08)",
+                      opacity: isBirthday === false || !isLoggedIn ? 0.6 : 1,
                     }}
                   >
                     <div className="card-header">

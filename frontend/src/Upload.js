@@ -219,7 +219,7 @@ function Upload() {
             setShowPreviewModal(false);
             if (isFree) {
               // ถ้าเป็นการใช้งานฟรี ไปที่หน้าสถานะทันที
-              navigate("/status");
+              navigate("/home");
             } else {
               // ถ้าไม่ฟรี ไปที่หน้าชำระเงิน
               navigate(`/payment?uploadId=${result.uploadId}&price=${price}&type=${type}&time=${time}`);
@@ -271,7 +271,7 @@ function Upload() {
           setShowPreviewModal(false);
           if (isFree) {
             // ถ้าเป็นการใช้งานฟรี ไปที่หน้าสถานะทันที
-            navigate("/status");
+            navigate("/home");
           } else {
             // ถ้าไม่ฟรี ไปที่หน้าชำระเงิน
             navigate(`/payment?uploadId=${result.uploadId}&price=${price}&type=${type}&time=${time}`);
